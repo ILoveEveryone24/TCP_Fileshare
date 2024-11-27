@@ -1,9 +1,11 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
 
 #define PORT 4444
 
@@ -13,6 +15,9 @@ int main(){
         perror("Failed to create the socket");
         return -1;
     }
+
+    int flags = fcntl(s, F_GETFL, 0);
+    fcntl(s, F_SETFL, flags | O_NONBLOCK);
 
     struct sockaddr_in server_addr;
     socklen_t server_addr_len = sizeof(server_addr);
@@ -53,17 +58,28 @@ int main(){
     char response[1024];
     memset(response, 0, sizeof(response));
 
+    FILE *command;
+    char command_r[1024];
+    memset(command_r, 0, sizeof(command_r));
+
     while(1){
         recv(client_s, request, sizeof(request), 0);
 
         printf("Client: %s\n", request);
 
         if(strcmp(request, "ls") == 0){
-            strcpy(response, "DIRECTORY");
-            send(client_s, response, sizeof(response), 0);
+            command = popen("ls -ago", "r");
+            if(command == NULL){
+                strcpy(response, "INVALID COMMAND\n");
+                send(client_s, response, sizeof(response), 0);
+            }
+            while(fgets(command_r, sizeof(command_r), command) != NULL){
+                int bytes_sent = send(client_s, command_r, sizeof(command_r), 0);
+            }
+            pclose(command);
         }
         else{
-            strcpy(response, "INVALID COMMAND");
+            strcpy(response, "INVALID COMMAND\n");
             send(client_s, response, sizeof(response), 0);
         }
     }
