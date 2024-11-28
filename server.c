@@ -119,6 +119,7 @@ int main(){
             if(command == NULL){
                 strcpy(response, "INVALID COMMAND\n");
                 send(client_s, response, sizeof(response), 0);
+                continue;
             }
             while(fgets(command_res, sizeof(command_res), command) != NULL){
                 send(client_s, command_res, sizeof(command_res), 0);

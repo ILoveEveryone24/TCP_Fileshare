@@ -58,9 +58,12 @@ int main(){
     char *file_name;
     long file_size = 0;
 
-    char *opcode = "";
+    char *opcode;
 
-    int writing = 0;
+    //FLAGS
+    int getting = 0;
+    int listing = 0;
+    int putting = 0;
 
     while(1){
         memset(request, 0, sizeof(request));
@@ -74,7 +77,8 @@ int main(){
 
         ssize_t bytes_r;
         while((bytes_r = recv(s, response, sizeof(response), 0)) > 0){
-            if(writing == 1){
+            //CHECK FLAGS
+            if(getting == 1){
                 file = fopen(file_name, "a");
                 long file_bytes = 0;
                 printf("GETTING FILE...\n");
@@ -97,24 +101,35 @@ int main(){
                 printf("FILE SUCCESSFULLY DOWNLOADED\n");
                 fclose(file);
                 free(file_name);
+                continue;
             }
-            char *response_copy = strdup(response);
-            opcode = strtok(response_copy, " ");
-            if(strcmp(opcode, "GET") == 0){
-                file_name = strtok(NULL, " ");
-                file_size = strtol(strtok(NULL, " "), NULL, 10);
-                if(file_name != NULL){
-                    file_name = strdup(file_name);
-                    file = fopen(file_name, "w");
-                    fclose(file);
-                    writing = 1;
+            else if(listing = 1){
+                //LIST
+            }
+            else if(putting = 1){
+                //PUT FILE
+            }
+
+            //OPCODES
+            printf("Server: %s\n", response);
+            opcode = strtok(response, " ");
+            if(opcode != NULL){
+                if(strcmp(opcode, "GET") == 0){
+                    file_name = strtok(NULL, " ");
+                    file_size = strtol(strtok(NULL, " "), NULL, 10);
+                    if(file_name != NULL){
+                        file_name = strdup(file_name);
+                        file = fopen(file_name, "w");
+                        fclose(file);
+                        getting = 1;
+                    }
+                }
+                else if(strcmp(opcode, "LS") == 0){
+                    listing = 1;
                 }
             }
 
-
-            response[bytes_r] = '\0';
             memset(response, 0, sizeof(response));
-            free(response_copy);
         }
         if(bytes_r == 0){
             break;
