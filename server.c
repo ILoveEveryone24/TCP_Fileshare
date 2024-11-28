@@ -6,8 +6,18 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #define PORT 4444
+
+int isInArray(char *str, char *arr[], int len){
+    for(int i = 0; i < len; i++){
+        if(strcmp(str, arr[i]) == 0){
+            return 0;
+        }
+    }
+    return -1;
+}
 
 int main(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
@@ -59,30 +69,118 @@ int main(){
     memset(response, 0, sizeof(response));
 
     FILE *command;
-    char command_r[1024];
-    memset(command_r, 0, sizeof(command_r));
+    char command_res[1024];
+    memset(command_res, 0, sizeof(command_res));
+
+    struct dirent *dp;
+    char *path = "./";
+    DIR *dir = opendir(path);
+
+    if(dir  == NULL){
+        printf("Failed to open current directory");
+        return -1;
+    }
+
+    int file_count = 0;
+    while((dp = readdir(dir)) != NULL){
+        file_count++;
+    }
+
+    char **files = malloc(file_count * sizeof(char *));
+    if(files == NULL){
+        printf("Failed to allocate memory");
+        return -1;
+    }
+    rewinddir(dir);
+
+    int i = 0;
+    while((dp = readdir(dir)) != NULL){
+        files[i] = strdup(dp->d_name);
+        i++;
+    }
+
+    char *command_req;
+    char *file_name;
 
     while(1){
+        memset(request, 0, sizeof(request));
+        memset(response, 0, sizeof(response));
         recv(client_s, request, sizeof(request), 0);
 
         printf("Client: %s\n", request);
 
-        if(strcmp(request, "ls") == 0){
+        command_req = strtok(request, " ");
+        file_name = strtok(NULL, " ");
+        printf("Comamnd_req: %s\n", command_req);
+        printf("File_name: %s\n", file_name);
+
+        if(strcmp(command_req, "ls") == 0){
             command = popen("ls -ago", "r");
             if(command == NULL){
                 strcpy(response, "INVALID COMMAND\n");
                 send(client_s, response, sizeof(response), 0);
             }
-            while(fgets(command_r, sizeof(command_r), command) != NULL){
-                int bytes_sent = send(client_s, command_r, sizeof(command_r), 0);
+            while(fgets(command_res, sizeof(command_res), command) != NULL){
+                send(client_s, command_res, sizeof(command_res), 0);
             }
             pclose(command);
+        }
+        else if(strcmp(command_req, "get") == 0 && file_name != NULL){
+            if(isInArray(file_name, files, file_count) == 0){
+                FILE *file = fopen(file_name, "r");
+                if(file == NULL){
+                    printf("Failed to open file");
+                    strcpy(response, "INVALID FILE\n");
+                    send(client_s, response, sizeof(response), 0);
+                    continue;
+                }
+
+                fseek(file, 0, SEEK_END);
+                long file_length = ftell(file);
+                fseek(file, 0, SEEK_SET);
+                printf("File length:%ld\n", file_length);
+
+                char *file_content = malloc(file_length);
+                if(file_content == NULL){
+                    printf("Failed to allocate memory");
+                    strcpy(response, "FAILED TO OPEN FILE\n");
+                    send(client_s, response, sizeof(response), 0);
+                    fclose(file);
+                    continue;
+                }
+
+                size_t bytes_read = fread(file_content, sizeof(char), file_length, file);
+                if(bytes_read != file_length){
+                    printf("Failed to read the file");
+                    strcpy(response, "FAILED TO READ FILE\n");
+                    send(client_s, response, sizeof(response), 0);
+                    free(file_content);
+                    fclose(file);
+                    continue;
+                }
+
+                sprintf(response, "GET %s %ld", file_name, file_length);
+                send(client_s, response, sizeof(response), 0);
+                printf("Sending file: %s\n", file_name);
+                size_t bytes_sent = send(client_s, file_content, file_length, 0);
+                printf("BYTES SENT:%ld\n", bytes_sent);
+
+                fclose(file);
+                free(file_content);
+
+            }
+            else{
+                strcpy(response, "INVALID FILE\n");
+                send(client_s, response, sizeof(response), 0);
+            }
         }
         else{
             strcpy(response, "INVALID COMMAND\n");
             send(client_s, response, sizeof(response), 0);
         }
     }
+
+    free(files);
 
     close(client_s);
     close(s);

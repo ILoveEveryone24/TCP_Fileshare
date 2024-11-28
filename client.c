@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdlib.h>
 
 #define PORT 4444
 #define IP "127.0.0.1"
@@ -50,19 +51,73 @@ int main(){
     char request[1024];
     memset(request, 0, sizeof(request));
 
-    char response[1024];
+    char response[2048];
     memset(response, 0, sizeof(response));
-    
+
+    FILE *file;
+    char *file_name;
+    long file_size = 0;
+
+    char *opcode = "";
+
+    int writing = 0;
 
     while(1){
+        memset(request, 0, sizeof(request));
+        memset(response, 0, sizeof(response));
+
         if(fgets(request, sizeof(request), stdin) != NULL){
             request[strcspn(request, "\n")] = '\0';
 
             send(s, request, sizeof(request), 0);
         }
+
         ssize_t bytes_r;
         while((bytes_r = recv(s, response, sizeof(response), 0)) > 0){
-            printf("Server: %s", response);
+            if(writing == 1){
+                file = fopen(file_name, "a");
+                long file_bytes = 0;
+                printf("GETTING FILE...\n");
+                while(file_bytes != file_size){
+                    sleep(1);
+                    if(bytes_r < 0){
+                        continue;
+                    }
+                    else if(bytes_r == 0){
+                        break;
+                    }
+                    else{
+                        fwrite(response, sizeof(char), bytes_r, file);
+                        file_bytes += bytes_r;
+                    }
+                    memset(response, 0, sizeof(response));
+
+                    bytes_r = recv(s, response, sizeof(response), 0);
+                }
+                printf("FILE SUCCESSFULLY DOWNLOADED\n");
+                fclose(file);
+                free(file_name);
+            }
+            char *response_copy = strdup(response);
+            opcode = strtok(response_copy, " ");
+            if(strcmp(opcode, "GET") == 0){
+                file_name = strtok(NULL, " ");
+                file_size = strtol(strtok(NULL, " "), NULL, 10);
+                if(file_name != NULL){
+                    file_name = strdup(file_name);
+                    file = fopen(file_name, "w");
+                    fclose(file);
+                    writing = 1;
+                }
+            }
+
+
+            response[bytes_r] = '\0';
+            memset(response, 0, sizeof(response));
+            free(response_copy);
+        }
+        if(bytes_r == 0){
+            break;
         }
     }
 
