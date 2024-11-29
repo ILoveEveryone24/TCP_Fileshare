@@ -81,7 +81,7 @@ int main(){
         return -1;
     }
 
-    int file_count = 0;
+    long file_count = 0;
     while((dp = readdir(dir)) != NULL){
         file_count++;
     }
@@ -121,7 +121,12 @@ int main(){
                 send(client_s, response, sizeof(response), 0);
                 continue;
             }
+
+            sprintf(response, "LS %ld", file_count);
+            send(client_s, response, sizeof(response), 0);
+
             while(fgets(command_res, sizeof(command_res), command) != NULL){
+                printf("%s\n", command_res);
                 send(client_s, command_res, sizeof(command_res), 0);
             }
             pclose(command);

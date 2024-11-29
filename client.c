@@ -58,6 +58,8 @@ int main(){
     char *file_name;
     long file_size = 0;
 
+    long dir_size = 0;
+
     char *opcode;
 
     //FLAGS
@@ -85,6 +87,7 @@ int main(){
                 while(file_bytes != file_size){
                     sleep(1);
                     if(bytes_r < 0){
+                        bytes_r = recv(s, response, sizeof(response), 0);
                         continue;
                     }
                     else if(bytes_r == 0){
@@ -101,12 +104,31 @@ int main(){
                 printf("FILE SUCCESSFULLY DOWNLOADED\n");
                 fclose(file);
                 free(file_name);
+                getting = 0;
                 continue;
             }
-            else if(listing = 1){
-                //LIST
+            else if(listing == 1){
+                long cnt = 0;
+                while(cnt < dir_size){
+                    if(bytes_r < 0){
+                        bytes_r = recv(s, response, sizeof(response), 0);
+                        continue;
+                    }
+                    else if(bytes_r == 0){
+                        break;
+                    }
+                    else{
+                        printf("%s", response);
+                        memset(response, 0, sizeof(response));
+                    }
+                    bytes_r = recv(s, response, sizeof(response), 0);
+                    
+                    cnt++;
+                }
+                listing = 0;
+                continue;
             }
-            else if(putting = 1){
+            else if(putting == 1){
                 //PUT FILE
             }
 
@@ -125,6 +147,7 @@ int main(){
                     }
                 }
                 else if(strcmp(opcode, "LS") == 0){
+                    dir_size = strtol(strtok(NULL, " "), NULL, 10) + 1;
                     listing = 1;
                 }
             }
