@@ -122,13 +122,38 @@ int main(){
                 continue;
             }
 
-            sprintf(response, "LS %ld", file_count);
-            send(client_s, response, sizeof(response), 0);
 
-            while(fgets(command_res, sizeof(command_res), command) != NULL){
-                printf("%s\n", command_res);
-                send(client_s, command_res, sizeof(command_res), 0);
+            fseek(command, 0, SEEK_END);
+            long command_length = ftell(command);
+            fseek(command, 0, SEEK_SET);
+
+            
+            char *ls_dir = malloc(command_length);
+            if(ls_dir == NULL){
+                printf("Failed to allocate memory");
+                strcpy(response, "FAILED TO RUN COMMAND\n");
+                send(client_s, response, sizeof(response),0);
+                pclose(command);
+                continue;
             }
+            size_t bytes_read = fread(ls_dir, sizeof(char), command_length, command);
+            if(bytes_read != command_length){
+                printf("Failed to read the command");
+                strcpy(response, "FAILED TO READ THE COMMAND\n");
+                send(client_s, response, sizeof(response), 0);
+                free(ls_dir);
+                pclose(command);
+                continue;
+
+            }
+
+            sprintf(response, "LS %ld", command_length);
+            send(client_s, response, sizeof(response), 0);
+            size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
+            if(bytes_sent != command_length){
+                printf("Failed to send whole command");
+            }
+
             pclose(command);
         }
         else if(strcmp(command_req, "get") == 0 && file_name != NULL){
@@ -170,6 +195,9 @@ int main(){
                 printf("Sending file: %s\n", file_name);
                 size_t bytes_sent = send(client_s, file_content, file_length, 0);
                 printf("BYTES SENT:%ld\n", bytes_sent);
+                if(bytes_sent != file_length){
+                    printf("Failed to send whole file");
+                }
 
                 fclose(file);
                 free(file_content);
