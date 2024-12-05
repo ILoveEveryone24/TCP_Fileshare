@@ -108,8 +108,8 @@ int main(){
                 continue;
             }
             else if(listing == 1){
-                long cnt = 0;
-                while(cnt < dir_size){
+                long ls_bytes = 0;
+                while(ls_bytes != dir_size){
                     if(bytes_r < 0){
                         bytes_r = recv(s, response, sizeof(response), 0);
                         continue;
@@ -119,11 +119,11 @@ int main(){
                     }
                     else{
                         printf("%s", response);
-                        memset(response, 0, sizeof(response));
+                        ls_bytes += bytes_r;
                     }
+                    memset(response, 0, sizeof(response));
                     bytes_r = recv(s, response, sizeof(response), 0);
                     
-                    cnt++;
                 }
                 listing = 0;
                 continue;
@@ -147,7 +147,7 @@ int main(){
                     }
                 }
                 else if(strcmp(opcode, "LS") == 0){
-                    dir_size = strtol(strtok(NULL, " "), NULL, 10) + 1;
+                    dir_size = strtol(strtok(NULL, " "), NULL, 10);
                     listing = 1;
                 }
             }

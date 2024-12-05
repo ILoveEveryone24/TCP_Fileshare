@@ -122,12 +122,7 @@ int main(){
                 continue;
             }
 
-
-            fseek(command, 0, SEEK_END);
-            long command_length = ftell(command);
-            fseek(command, 0, SEEK_SET);
-
-            
+            long command_length = 64;
             char *ls_dir = malloc(command_length);
             if(ls_dir == NULL){
                 printf("Failed to allocate memory");
@@ -136,24 +131,35 @@ int main(){
                 pclose(command);
                 continue;
             }
-            size_t bytes_read = fread(ls_dir, sizeof(char), command_length, command);
-            if(bytes_read != command_length){
-                printf("Failed to read the command");
-                strcpy(response, "FAILED TO READ THE COMMAND\n");
-                send(client_s, response, sizeof(response), 0);
-                free(ls_dir);
-                pclose(command);
-                continue;
 
+            char buffer[64] = {0};
+            long cnt = 0;
+
+            while(fgets(buffer, sizeof(buffer), command) != NULL){
+                cnt += strlen(buffer);
+                if(cnt > command_length){
+                    command_length *= 2;
+                    char *temp = realloc(ls_dir, command_length);
+                    if(temp == NULL){
+                        printf("Failed to reallocate memory");
+                        strcpy(response, "FAILED TO RUN COMMAND\n");
+                        send(client_s, response, sizeof(response),0);
+                        free(ls_dir);
+                        pclose(command);
+                        continue;
+                    }
+                    ls_dir = temp;
+                }
+                strcat(ls_dir, buffer);
             }
-
+            
             sprintf(response, "LS %ld", command_length);
             send(client_s, response, sizeof(response), 0);
             size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
             if(bytes_sent != command_length){
                 printf("Failed to send whole command");
             }
-
+            free(ls_dir);
             pclose(command);
         }
         else if(strcmp(command_req, "get") == 0 && file_name != NULL){
