@@ -11,6 +11,91 @@
 #define PORT 4444
 #define IP "127.0.0.1"
 
+int countDigits(long digit){
+    if(digit == 0){
+        return 0;
+    }
+
+    if(digit < 0){
+        digit = -digit;
+    }
+
+    int cnt = 0;
+    while(digit > 0){
+        digit /= 10;
+        cnt++;
+    }
+    return cnt;
+}
+
+void handle_getting(char *file_name, long file_size, int s){
+    FILE *file = fopen(file_name, "a");
+    long file_bytes = 0;
+    int bytes_r;
+
+    char response[2048];
+    memset(response, 0, sizeof(response));
+
+    printf("GETTING FILE...\n");
+    bytes_r = recv(s, response, sizeof(response), 0);
+    while(file_bytes != file_size){
+        sleep(1);
+        if(bytes_r < 0){
+            bytes_r = recv(s, response, sizeof(response), 0);
+            continue;
+        }
+        else if(bytes_r == 0){
+            fclose(file);
+            free(file_name);
+            printf("SERVER DISCONNECTED");
+            return;
+        }
+        else{
+            fwrite(response, sizeof(char), bytes_r, file);
+            file_bytes += bytes_r;
+        }
+        memset(response, 0, sizeof(response));
+
+        bytes_r = recv(s, response, sizeof(response), 0);
+    }
+    printf("FILE SUCCESSFULLY DOWNLOADED\n");
+    fclose(file);
+    free(file_name);
+}
+
+void handle_listing(long dir_size, int s){
+    long ls_bytes = 0;
+    int bytes_r;
+
+    char response[2048];
+    memset(response, 0, sizeof(response));
+
+    printf("LISTING...\n");
+    bytes_r = recv(s, response, sizeof(response), 0);
+    while(ls_bytes != dir_size){
+        if(bytes_r < 0){
+            bytes_r = recv(s, response, sizeof(response), 0);
+            continue;
+        }
+        else if(bytes_r == 0){
+            break;
+        }
+        else if(bytes_r > 0){
+            printf("RESPONSE");
+            printf("%s", response);
+            ls_bytes += bytes_r;
+        }
+        memset(response, 0, sizeof(response));
+        bytes_r = recv(s, response, sizeof(response), 0);
+        
+    }
+    printf("LISTING DONE\n");
+}
+
+void handle_putting(){
+    //HANDLE PUT
+}
+
 int main(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -63,8 +148,6 @@ int main(){
     char *opcode;
 
     //FLAGS
-    int getting = 0;
-    int listing = 0;
     int putting = 0;
 
     while(1){
@@ -77,65 +160,21 @@ int main(){
             send(s, request, sizeof(request), 0);
         }
 
-        ssize_t bytes_r;
+        int bytes_r;
         while((bytes_r = recv(s, response, sizeof(response), 0)) > 0){
             //CHECK FLAGS
-            if(getting == 1){
-                file = fopen(file_name, "a");
-                long file_bytes = 0;
-                printf("GETTING FILE...\n");
-                while(file_bytes != file_size){
-                    sleep(1);
-                    if(bytes_r < 0){
-                        bytes_r = recv(s, response, sizeof(response), 0);
-                        continue;
-                    }
-                    else if(bytes_r == 0){
-                        break;
-                    }
-                    else{
-                        fwrite(response, sizeof(char), bytes_r, file);
-                        file_bytes += bytes_r;
-                    }
-                    memset(response, 0, sizeof(response));
+            if(putting == 1){
+                printf("PUTTING %s\n", file_name);
 
-                    bytes_r = recv(s, response, sizeof(response), 0);
-                }
-                printf("FILE SUCCESSFULLY DOWNLOADED\n");
-                fclose(file);
                 free(file_name);
-                getting = 0;
-                continue;
-            }
-            else if(listing == 1){
-                long ls_bytes = 0;
-                while(ls_bytes != dir_size){
-                    if(bytes_r < 0){
-                        bytes_r = recv(s, response, sizeof(response), 0);
-                        continue;
-                    }
-                    else if(bytes_r == 0){
-                        break;
-                    }
-                    else{
-                        printf("%s", response);
-                        ls_bytes += bytes_r;
-                    }
-                    memset(response, 0, sizeof(response));
-                    bytes_r = recv(s, response, sizeof(response), 0);
-                    
-                }
-                listing = 0;
-                continue;
-            }
-            else if(putting == 1){
-                //PUT FILE
+                putting = 0;
             }
 
             //OPCODES
             printf("Server: %s\n", response);
             opcode = strtok(response, " ");
             if(opcode != NULL){
+                //getting
                 if(strcmp(opcode, "GET") == 0){
                     file_name = strtok(NULL, " ");
                     file_size = strtol(strtok(NULL, " "), NULL, 10);
@@ -143,12 +182,41 @@ int main(){
                         file_name = strdup(file_name);
                         file = fopen(file_name, "w");
                         fclose(file);
-                        getting = 1;
+
+                        handle_getting(file_name, file_size, s);
                     }
                 }
+                //listing
                 else if(strcmp(opcode, "LS") == 0){
                     dir_size = strtol(strtok(NULL, " "), NULL, 10);
-                    listing = 1;
+                    handle_listing(dir_size, s);
+                }
+                //putting
+                else if(strcmp(opcode, "PUT") == 0){
+                    file_name = strtok(NULL, " ");
+                    if(file_name != NULL){
+                        file_name = strdup(file_name);
+                        file = fopen(file_name, "r");
+                        if(file != NULL){
+                            fseek(file, 0, SEEK_END);
+                            long file_length = ftell(file);
+                            fclose(file);
+                            int file_digit_length = countDigits(file_length);
+                            char *c_response = malloc(strlen(file_name) + file_digit_length + 1);
+                            if(c_response == NULL){
+                                printf("Failed to allocate memory");
+                                free(file_name);
+                                continue;
+                            }
+                            sprintf(c_response, "%s %ld", file_name, file_length);
+                            printf("%s", c_response);
+                            putting = 1;
+                        }
+                        else{
+                            printf("File does not exist\n");
+                            free(file_name);
+                        }
+                    }
                 }
             }
 

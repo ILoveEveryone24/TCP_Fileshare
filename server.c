@@ -105,7 +105,11 @@ int main(){
     while(1){
         memset(request, 0, sizeof(request));
         memset(response, 0, sizeof(response));
-        recv(client_s, request, sizeof(request), 0);
+        size_t bytes_r = recv(client_s, request, sizeof(request), 0);
+        if(bytes_r == 0){
+            printf("\nCLIENT DISCONNECTED\n");
+            break;
+        }
 
         printf("Client: %s\n", request);
 
@@ -114,110 +118,120 @@ int main(){
         printf("Comamnd_req: %s\n", command_req);
         printf("File_name: %s\n", file_name);
 
-        if(strcmp(command_req, "ls") == 0){
-            command = popen("ls -ago", "r");
-            if(command == NULL){
-                strcpy(response, "INVALID COMMAND\n");
+        if(command_req != NULL){
+            if(strcmp(command_req, "ls") == 0){
+                command = popen("ls -ago", "r");
+                if(command == NULL){
+                    strcpy(response, "INVALID COMMAND\n");
+                    send(client_s, response, sizeof(response), 0);
+                    continue;
+                }
+
+                long command_length = 64;
+                char *ls_dir = calloc(command_length, sizeof(char));
+                if(ls_dir == NULL){
+                    printf("Failed to allocate memory");
+                    strcpy(response, "FAILED TO RUN COMMAND\n");
+                    send(client_s, response, sizeof(response),0);
+                    pclose(command);
+                    continue;
+                }
+
+                char buffer[64] = {0};
+                long cnt = 0;
+
+                while(fgets(buffer, sizeof(buffer), command) != NULL){
+                    cnt += strlen(buffer);
+                    if(cnt > command_length){
+                        command_length *= 2;
+                        char *temp = realloc(ls_dir, command_length);
+                        if(temp == NULL){
+                            printf("Failed to reallocate memory");
+                            strcpy(response, "FAILED TO RUN COMMAND\n");
+                            send(client_s, response, sizeof(response),0);
+                            free(ls_dir);
+                            pclose(command);
+                            continue;
+                        }
+                        ls_dir = temp;
+                    }
+                    strcat(ls_dir, buffer);
+                    memset(buffer, 0, sizeof(buffer));
+                }
+                sprintf(response, "LS %ld", command_length);
+                printf("\n\nLS_DIR:\n\n%s\n\n", ls_dir);
                 send(client_s, response, sizeof(response), 0);
-                continue;
-            }
-
-            long command_length = 64;
-            char *ls_dir = malloc(command_length);
-            if(ls_dir == NULL){
-                printf("Failed to allocate memory");
-                strcpy(response, "FAILED TO RUN COMMAND\n");
-                send(client_s, response, sizeof(response),0);
+                size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
+                if(bytes_sent != command_length){
+                    printf("Failed to send whole command");
+                }
+                free(ls_dir);
                 pclose(command);
-                continue;
             }
-
-            char buffer[64] = {0};
-            long cnt = 0;
-
-            while(fgets(buffer, sizeof(buffer), command) != NULL){
-                cnt += strlen(buffer);
-                if(cnt > command_length){
-                    command_length *= 2;
-                    char *temp = realloc(ls_dir, command_length);
-                    if(temp == NULL){
-                        printf("Failed to reallocate memory");
-                        strcpy(response, "FAILED TO RUN COMMAND\n");
-                        send(client_s, response, sizeof(response),0);
-                        free(ls_dir);
-                        pclose(command);
+            else if(strcmp(command_req, "get") == 0 && file_name != NULL){
+                if(isInArray(file_name, files, file_count) == 0){
+                    FILE *file = fopen(file_name, "r");
+                    if(file == NULL){
+                        printf("Failed to open file");
+                        strcpy(response, "INVALID FILE\n");
+                        send(client_s, response, sizeof(response), 0);
                         continue;
                     }
-                    ls_dir = temp;
+
+                    fseek(file, 0, SEEK_END);
+                    long file_length = ftell(file);
+                    fseek(file, 0, SEEK_SET);
+                    printf("File length:%ld\n", file_length);
+
+                    char *file_content = malloc(file_length);
+                    if(file_content == NULL){
+                        printf("Failed to allocate memory");
+                        strcpy(response, "FAILED TO OPEN FILE\n");
+                        send(client_s, response, sizeof(response), 0);
+                        fclose(file);
+                        continue;
+                    }
+
+                    size_t bytes_read = fread(file_content, sizeof(char), file_length, file);
+                    if(bytes_read != file_length){
+                        printf("Failed to read the file");
+                        strcpy(response, "FAILED TO READ FILE\n");
+                        send(client_s, response, sizeof(response), 0);
+                        free(file_content);
+                        fclose(file);
+                        continue;
+                    }
+
+                    sprintf(response, "GET %s %ld", file_name, file_length);
+                    send(client_s, response, sizeof(response), 0);
+                    printf("Sending file: %s\n", file_name);
+                    size_t bytes_sent = send(client_s, file_content, file_length, 0);
+                    printf("BYTES SENT:%ld\n", bytes_sent);
+                    if(bytes_sent != file_length){
+                        printf("Failed to send whole file");
+                    }
+
+                    fclose(file);
+                    free(file_content);
+
                 }
-                strcat(ls_dir, buffer);
-            }
-            
-            sprintf(response, "LS %ld", command_length);
-            send(client_s, response, sizeof(response), 0);
-            size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
-            if(bytes_sent != command_length){
-                printf("Failed to send whole command");
-            }
-            free(ls_dir);
-            pclose(command);
-        }
-        else if(strcmp(command_req, "get") == 0 && file_name != NULL){
-            if(isInArray(file_name, files, file_count) == 0){
-                FILE *file = fopen(file_name, "r");
-                if(file == NULL){
-                    printf("Failed to open file");
+                else{
                     strcpy(response, "INVALID FILE\n");
                     send(client_s, response, sizeof(response), 0);
-                    continue;
                 }
-
-                fseek(file, 0, SEEK_END);
-                long file_length = ftell(file);
-                fseek(file, 0, SEEK_SET);
-                printf("File length:%ld\n", file_length);
-
-                char *file_content = malloc(file_length);
-                if(file_content == NULL){
-                    printf("Failed to allocate memory");
-                    strcpy(response, "FAILED TO OPEN FILE\n");
-                    send(client_s, response, sizeof(response), 0);
-                    fclose(file);
-                    continue;
-                }
-
-                size_t bytes_read = fread(file_content, sizeof(char), file_length, file);
-                if(bytes_read != file_length){
-                    printf("Failed to read the file");
-                    strcpy(response, "FAILED TO READ FILE\n");
-                    send(client_s, response, sizeof(response), 0);
-                    free(file_content);
-                    fclose(file);
-                    continue;
-                }
-
-                sprintf(response, "GET %s %ld", file_name, file_length);
+            }
+            else if(strcmp(command_req, "put") == 0 && file_name != NULL){
+                sprintf(response, "PUT %s", file_name);
                 send(client_s, response, sizeof(response), 0);
-                printf("Sending file: %s\n", file_name);
-                size_t bytes_sent = send(client_s, file_content, file_length, 0);
-                printf("BYTES SENT:%ld\n", bytes_sent);
-                if(bytes_sent != file_length){
-                    printf("Failed to send whole file");
-                }
-
-                fclose(file);
-                free(file_content);
-
             }
             else{
-                strcpy(response, "INVALID FILE\n");
+                strcpy(response, "INVALID COMMAND\n");
                 send(client_s, response, sizeof(response), 0);
             }
         }
-        else{
-            strcpy(response, "INVALID COMMAND\n");
-            send(client_s, response, sizeof(response), 0);
-        }
+    }
+    for(int i = 0; i < file_count; i++){
+        free(files[i]);
     }
 
     free(files);
