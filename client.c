@@ -11,23 +11,6 @@
 #define PORT 4444
 #define IP "127.0.0.1"
 
-int countDigits(long digit){
-    if(digit == 0){
-        return 0;
-    }
-
-    if(digit < 0){
-        digit = -digit;
-    }
-
-    int cnt = 0;
-    while(digit > 0){
-        digit /= 10;
-        cnt++;
-    }
-    return cnt;
-}
-
 void handle_getting(char *file_name, long file_size, int s){
     FILE *file = fopen(file_name, "a");
     long file_bytes = 0;
@@ -39,6 +22,7 @@ void handle_getting(char *file_name, long file_size, int s){
     printf("GETTING FILE...\n");
     bytes_r = recv(s, response, sizeof(response), 0);
     while(file_bytes != file_size){
+        //ADD CHECK FOR NOT BEING ABLE TO RECEIVE FULL FILE
         sleep(1);
         if(bytes_r < 0){
             bytes_r = recv(s, response, sizeof(response), 0);
@@ -73,6 +57,7 @@ void handle_listing(long dir_size, int s){
     printf("LISTING...\n");
     bytes_r = recv(s, response, sizeof(response), 0);
     while(ls_bytes != dir_size){
+        //ADD CHECK FOR NOT BEING ABLE TO RECEIVE FULL LISTING
         if(bytes_r < 0){
             bytes_r = recv(s, response, sizeof(response), 0);
             continue;
@@ -92,8 +77,40 @@ void handle_listing(long dir_size, int s){
     printf("LISTING DONE\n");
 }
 
-void handle_putting(){
-    //HANDLE PUT
+void handle_putting(char *file_name, long file_length, int s){
+
+    char *file_content = malloc(file_length);
+    if(file_content == NULL){
+        printf("Failed to allocate memory");
+        free(file_name);
+        //SEND TO SERVER THAT IT FAILED
+        return;
+    }
+    FILE *file = fopen(file_name, "r");
+    if(file == NULL){
+        printf("Failed to open file");
+        free(file_name);
+        free(file_content);
+        //SEND TO SERVER THAT IT FAILED
+        return;
+    }
+    size_t bytes_read = fread(file_content, sizeof(char), file_length, file);
+    if(bytes_read != file_length){
+        printf("Failed to read the file");
+        //SEND TO SERVER THAT IT FAILED
+        free(file_name);
+        free(file_content);
+        fclose(file);
+        return;
+    }
+    size_t bytes_sent = send(s, file_content, file_length, 0);
+    if(bytes_sent != file_length){
+        printf("Failed to send whole file");
+    }
+
+    free(file_name);
+    free(file_content);
+    fclose(file);
 }
 
 int main(){
@@ -147,9 +164,6 @@ int main(){
 
     char *opcode;
 
-    //FLAGS
-    int putting = 0;
-
     while(1){
         memset(request, 0, sizeof(request));
         memset(response, 0, sizeof(response));
@@ -162,15 +176,6 @@ int main(){
 
         int bytes_r;
         while((bytes_r = recv(s, response, sizeof(response), 0)) > 0){
-            //CHECK FLAGS
-            if(putting == 1){
-                printf("PUTTING %s\n", file_name);
-
-                free(file_name);
-                putting = 0;
-            }
-
-            //OPCODES
             printf("Server: %s\n", response);
             opcode = strtok(response, " ");
             if(opcode != NULL){
@@ -201,16 +206,10 @@ int main(){
                             fseek(file, 0, SEEK_END);
                             long file_length = ftell(file);
                             fclose(file);
-                            int file_digit_length = countDigits(file_length);
-                            char *c_response = malloc(strlen(file_name) + file_digit_length + 1);
-                            if(c_response == NULL){
-                                printf("Failed to allocate memory");
-                                free(file_name);
-                                continue;
-                            }
-                            sprintf(c_response, "%s %ld", file_name, file_length);
-                            printf("%s", c_response);
-                            putting = 1;
+                            char c_response[1024] ={0};
+                            snprintf(c_response, sizeof(c_response), "%s %ld", file_name, file_length);
+                            send(s, c_response, sizeof(c_response), 0);
+                            handle_putting(file_name, file_length, s);
                         }
                         else{
                             printf("File does not exist\n");

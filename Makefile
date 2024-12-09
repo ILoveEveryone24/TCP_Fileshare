@@ -5,7 +5,7 @@ TARGETS := server client
 
 all: $(TARGETS)
 
-%: %.cpp
+%: %.c
 	$(CC) -o $@ $< $(CFLAGS)
 
 clean:

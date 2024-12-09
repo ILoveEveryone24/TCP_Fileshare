@@ -19,6 +19,48 @@ int isInArray(char *str, char *arr[], int len){
     return -1;
 }
 
+void handle_putting(int client_s){
+    char response[1024] = {0};
+
+    size_t bytes_r = recv(client_s, response, sizeof(response), 0);
+    while(bytes_r < 0){
+        bytes_r = recv(client_s, response, sizeof(response), 0);
+    }
+    if(bytes_r == 0){
+        printf("CLIENT DISCONNECTED\n");
+        return;
+    }
+    
+    char *file_name = strtok(response, " ");
+    long file_length = strtol(strtok(NULL, " "), NULL, 10);
+
+    FILE *file = fopen(file_name, "w");
+    if(file == NULL){
+        printf("Failed to open file");
+        return;
+    }
+    long file_bytes = 0;
+    while(file_bytes != file_length){
+        memset(response, 0, sizeof(response));
+        bytes_r = recv(client_s, response, sizeof(response), 0);
+        
+        if(bytes_r < 0){
+            continue;
+        }
+        else if(bytes_r == 0){
+            printf("CLIENT DISCONNECTED\n");
+            break;
+        }
+        else{
+            fwrite(response, sizeof(char), bytes_r, file);
+            file_bytes += bytes_r;
+        }
+    }
+    printf("SUCCESFULLY RECEIVED THE FILE");
+    
+    fclose(file);
+}
+
 int main(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -158,7 +200,7 @@ int main(){
                     strcat(ls_dir, buffer);
                     memset(buffer, 0, sizeof(buffer));
                 }
-                sprintf(response, "LS %ld", command_length);
+                snprintf(response, sizeof(response), "LS %ld", command_length);
                 printf("\n\nLS_DIR:\n\n%s\n\n", ls_dir);
                 send(client_s, response, sizeof(response), 0);
                 size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
@@ -202,7 +244,7 @@ int main(){
                         continue;
                     }
 
-                    sprintf(response, "GET %s %ld", file_name, file_length);
+                    snprintf(response, sizeof(response), "GET %s %ld", file_name, file_length);
                     send(client_s, response, sizeof(response), 0);
                     printf("Sending file: %s\n", file_name);
                     size_t bytes_sent = send(client_s, file_content, file_length, 0);
@@ -221,8 +263,10 @@ int main(){
                 }
             }
             else if(strcmp(command_req, "put") == 0 && file_name != NULL){
-                sprintf(response, "PUT %s", file_name);
+                snprintf(response, sizeof(response), "PUT %s", file_name);
                 send(client_s, response, sizeof(response), 0);
+                
+                handle_putting(client_s);
             }
             else{
                 strcpy(response, "INVALID COMMAND\n");
