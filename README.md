@@ -1,2 +1,6 @@
 # Custom FTP
-## STATUS : NOT WORKING
+## OVERALLSTATUS : NOT WORKING
+### Current features:
+LS
+GET
+PUT
