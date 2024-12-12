@@ -52,6 +52,11 @@ void handle_putting(int client_s){
             break;
         }
         else{
+            if(strcmp(response, "FAILED") == 0){
+                fclose(file);
+                printf("Failed to put file");
+                return;
+            }
             fwrite(response, sizeof(char), bytes_r, file);
             file_bytes += bytes_r;
         }
@@ -206,6 +211,9 @@ int main(){
                 size_t bytes_sent = send(client_s, ls_dir, command_length, 0);
                 if(bytes_sent != command_length){
                     printf("Failed to send whole command");
+                    memset(response, 0, sizeof(response));
+                    strcpy(response, "FAILED");
+                    send(client_s, response, sizeof(response), 0);
                 }
                 free(ls_dir);
                 pclose(command);
@@ -251,6 +259,9 @@ int main(){
                     printf("BYTES SENT:%ld\n", bytes_sent);
                     if(bytes_sent != file_length){
                         printf("Failed to send whole file");
+                        memset(response, 0, sizeof(response));
+                        strcpy(response, "FAILED");
+                        send(client_s, response, sizeof(response), 0);
                     }
 
                     fclose(file);

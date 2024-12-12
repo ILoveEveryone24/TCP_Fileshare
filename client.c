@@ -22,7 +22,6 @@ void handle_getting(char *file_name, long file_size, int s){
     printf("GETTING FILE...\n");
     bytes_r = recv(s, response, sizeof(response), 0);
     while(file_bytes != file_size){
-        //ADD CHECK FOR NOT BEING ABLE TO RECEIVE FULL FILE
         sleep(1);
         if(bytes_r < 0){
             bytes_r = recv(s, response, sizeof(response), 0);
@@ -35,6 +34,12 @@ void handle_getting(char *file_name, long file_size, int s){
             return;
         }
         else{
+            if(strcmp(response, "FAILED") == 0){
+                fclose(file);
+                free(file_name);
+                printf("Failed to get file");
+                return;
+            }
             fwrite(response, sizeof(char), bytes_r, file);
             file_bytes += bytes_r;
         }
@@ -57,7 +62,6 @@ void handle_listing(long dir_size, int s){
     printf("LISTING...\n");
     bytes_r = recv(s, response, sizeof(response), 0);
     while(ls_bytes != dir_size){
-        //ADD CHECK FOR NOT BEING ABLE TO RECEIVE FULL LISTING
         if(bytes_r < 0){
             bytes_r = recv(s, response, sizeof(response), 0);
             continue;
@@ -66,6 +70,10 @@ void handle_listing(long dir_size, int s){
             break;
         }
         else if(bytes_r > 0){
+            if(strcmp(response, "FAILED") == 0){
+                printf("Failed to list");
+                return;
+            }
             printf("RESPONSE");
             printf("%s", response);
             ls_bytes += bytes_r;
@@ -78,12 +86,14 @@ void handle_listing(long dir_size, int s){
 }
 
 void handle_putting(char *file_name, long file_length, int s){
+    char response[100];
 
     char *file_content = malloc(file_length);
     if(file_content == NULL){
         printf("Failed to allocate memory");
         free(file_name);
-        //SEND TO SERVER THAT IT FAILED
+        strcpy(response, "FAILED");
+        send(s, response, sizeof(response), 0);
         return;
     }
     FILE *file = fopen(file_name, "r");
@@ -91,21 +101,25 @@ void handle_putting(char *file_name, long file_length, int s){
         printf("Failed to open file");
         free(file_name);
         free(file_content);
-        //SEND TO SERVER THAT IT FAILED
+        strcpy(response, "FAILED");
+        send(s, response, sizeof(response), 0);
         return;
     }
     size_t bytes_read = fread(file_content, sizeof(char), file_length, file);
     if(bytes_read != file_length){
         printf("Failed to read the file");
-        //SEND TO SERVER THAT IT FAILED
         free(file_name);
         free(file_content);
         fclose(file);
+        strcpy(response, "FAILED");
+        send(s, response, sizeof(response), 0);
         return;
     }
     size_t bytes_sent = send(s, file_content, file_length, 0);
     if(bytes_sent != file_length){
         printf("Failed to send whole file");
+        strcpy(response, "FAILED");
+        send(s, response, sizeof(response), 0);
     }
 
     free(file_name);
